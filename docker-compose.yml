@@ -17,3 +17,5 @@ services:
     volumes:
       - .:/app
     command: ["python", "gradio_app.py"]
+    depends_on:
+      - app

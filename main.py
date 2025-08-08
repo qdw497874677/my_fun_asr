@@ -1,13 +1,37 @@
 import os
 import re
 import tempfile
-from typing import List
+import uuid
+import asyncio
+from typing import List, Dict, Optional
+from datetime import datetime
 
 import torch
-from fastapi import FastAPI, File, UploadFile, HTTPException
+from fastapi import FastAPI, File, UploadFile, HTTPException, BackgroundTasks
 from funasr import AutoModel
+from pydantic import BaseModel
+from enum import Enum
 
 app = FastAPI()
+
+# 任务状态枚举
+class TaskStatus(str, Enum):
+    PENDING = "pending"
+    PROCESSING = "processing"
+    COMPLETED = "completed"
+    FAILED = "failed"
+
+# 任务模型
+class ASRTask(BaseModel):
+    id: str
+    status: TaskStatus
+    result: Optional[dict] = None
+    error: Optional[str] = None
+    created_at: datetime
+    completed_at: Optional[datetime] = None
+
+# 任务存储（在生产环境中应该使用数据库）
+tasks: Dict[str, ASRTask] = {}
 
 device = "cuda" if torch.cuda.is_available() else "cpu"
 
@@ -142,6 +166,114 @@ def format_timestamp(milliseconds):
     hours, seconds = divmod(seconds, 3600)
     minutes, seconds = divmod(seconds, 60)
     return f"{hours:02}:{minutes:02}:{seconds:02},{milliseconds:03}"
+
+
+# 异步处理ASR任务
+async def process_asr_task(task_id: str, file_path: str, ext_name: str):
+    task = tasks[task_id]
+    task.status = TaskStatus.PROCESSING
+    task.result = None
+    task.error = None
+    
+    temp_input_file_path = file_path
+    try:
+        if ext_name not in ['wav', 'mp3']:
+            # 如果不是音频文件,用ffmpeg转换为音频文件
+            temp_input_file_path = convert_audio(temp_input_file_path)
+
+        print(f"Processing task {task_id} with file {temp_input_file_path}")
+
+        # 运行ASR模型
+        result = model.generate(
+            input=temp_input_file_path,
+            batch_size_s=300,
+            batch_size_threshold_s=60,
+        )
+
+        try:
+            srt = funasr_to_srt(result)
+            result[0]['srt'] = srt
+        except Exception as e:
+            print(f'SRT conversion failed: {e}')
+
+        # 更新任务状态为完成
+        task.status = TaskStatus.COMPLETED
+        task.result = {"result": result}
+        task.completed_at = datetime.now()
+    except Exception as e:
+        # 更新任务状态为失败
+        task.status = TaskStatus.FAILED
+        task.error = str(e)
+        task.completed_at = datetime.now()
+        print(f"Task {task_id} failed: {e}")
+    finally:
+        # 清理临时文件
+        for temp_file in [temp_input_file_path]:
+            if temp_file and os.path.exists(temp_file):
+                os.remove(temp_file)
+
+
+@app.post("/asr/task")
+async def create_asr_task(file: List[UploadFile] = File(...), background_tasks: BackgroundTasks = None):
+    try:
+        if not file or any(f.filename == "" for f in file):
+            raise Exception("No file was uploaded")
+        if len(file) != 1:
+            raise Exception("Only one file can be uploaded at a time")
+        file = file[0]
+
+        # 创建任务ID
+        task_id = str(uuid.uuid4())
+        
+        # 创建任务对象
+        task = ASRTask(
+            id=task_id,
+            status=TaskStatus.PENDING,
+            created_at=datetime.now()
+        )
+        
+        # 保存任务到存储中
+        tasks[task_id] = task
+        
+        # 保存上传的文件
+        ext_name = os.path.splitext(file.filename)[1].strip('.')
+        temp_input_file_path = await save_upload_file(file)
+        
+        # 启动后台任务处理ASR
+        if background_tasks:
+            background_tasks.add_task(process_asr_task, task_id, temp_input_file_path, ext_name)
+        else:
+            # 如果没有background_tasks，直接运行（用于测试）
+            asyncio.create_task(process_asr_task(task_id, temp_input_file_path, ext_name))
+        
+        return {"task_id": task_id, "status": task.status}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/asr/task/{task_id}")
+async def get_task_status(task_id: str):
+    if task_id not in tasks:
+        raise HTTPException(status_code=404, detail="Task not found")
+    
+    task = tasks[task_id]
+    return {"task_id": task.id, "status": task.status, "created_at": task.created_at, "completed_at": task.completed_at}
+
+
+@app.get("/asr/task/{task_id}/result")
+async def get_task_result(task_id: str):
+    if task_id not in tasks:
+        raise HTTPException(status_code=404, detail="Task not found")
+    
+    task = tasks[task_id]
+    
+    if task.status == TaskStatus.PENDING or task.status == TaskStatus.PROCESSING:
+        raise HTTPException(status_code=400, detail=f"Task is not completed yet. Current status: {task.status}")
+    
+    if task.status == TaskStatus.FAILED:
+        raise HTTPException(status_code=500, detail=f"Task failed with error: {task.error}")
+    
+    return task.result
 
 
 @app.post("/asr")

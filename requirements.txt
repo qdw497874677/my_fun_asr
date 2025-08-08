@@ -3,6 +3,8 @@ fastapi==0.110.*
 python-multipart==0.0.*
 ffmpeg==1.4
 ffmpeg-python==0.2.0
+requests==2.31.*
+gradio==4.38.*
 
 funasr==1.1.*
 modelscope==1.18.*
