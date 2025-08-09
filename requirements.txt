@@ -7,6 +7,7 @@ requests==2.31.*
 gradio==4.38.*
 
 torch==2.3.*
+torchaudio==2.3.*
 funasr==1.1.*
 modelscope==1.18.*
 pydub==0.25.*

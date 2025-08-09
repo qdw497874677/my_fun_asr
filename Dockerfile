@@ -1,4 +1,4 @@
-# 使用国内镜像源的 Python 镜像作为基础镜像
+
 FROM python:3.10-slim
 
 # 设置工作目录
