@@ -7,8 +7,11 @@ WORKDIR /app
 # 复制依赖文件
 COPY requirements.txt requirements.txt
 
-# 安装 Python 依赖项
-RUN pip install -r requirements.txt
+# 配置pip使用镜像源以解决网络问题
+RUN pip config set global.index-url https://mirror.baidu.com/pypi/simple
+
+# 升级pip并安装依赖项
+RUN pip install --upgrade pip && pip install -r requirements.txt
 
 # 复制当前目录中的文件到工作目录中
 COPY . .
