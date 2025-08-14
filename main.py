@@ -3,6 +3,7 @@ import re
 import tempfile
 import uuid
 import asyncio
+import requests
 from typing import List, Dict, Optional
 from datetime import datetime
 
@@ -63,6 +64,27 @@ async def save_upload_file(upload_file: UploadFile) -> str:
     with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as temp_file:  # 创建临时文件
         temp_file.write(await upload_file.read())  # 将上传的文件内容写入临时文件
         return temp_file.name  # 返回临时文件路径
+
+
+# 函数，用于从URL下载文件到临时目录
+def download_file_from_url(url: str) -> str:
+    # 获取文件扩展名
+    filename = url.split("/")[-1]
+    suffix = os.path.splitext(filename)[1]
+    
+    # 创建临时文件
+    with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as temp_file:
+        temp_filename = temp_file.name
+        
+    # 下载文件
+    response = requests.get(url)
+    response.raise_for_status()
+    
+    # 保存文件
+    with open(temp_filename, 'wb') as f:
+        f.write(response.content)
+    
+    return temp_filename
 
 
 def funasr_to_srt(funasr_result):
@@ -274,6 +296,50 @@ async def get_task_result(task_id: str):
         raise HTTPException(status_code=500, detail=f"Task failed with error: {task.error}")
     
     return task.result
+
+
+# 新增的数据模型，用于通过URL创建任务
+class ASRTaskURL(BaseModel):
+    url: str
+
+
+@app.post("/asr/task/url")
+async def create_asr_task_from_url(task_data: ASRTaskURL, background_tasks: BackgroundTasks = None):
+    try:
+        url = task_data.url
+        if not url:
+            raise Exception("URL is required")
+        
+        # 创建任务ID
+        task_id = str(uuid.uuid4())
+        
+        # 创建任务对象
+        task = ASRTask(
+            id=task_id,
+            status=TaskStatus.PENDING,
+            created_at=datetime.now()
+        )
+        
+        # 保存任务到存储中
+        tasks[task_id] = task
+        
+        # 从URL下载文件
+        temp_input_file_path = download_file_from_url(url)
+        
+        # 获取文件扩展名
+        filename = url.split("/")[-1]
+        ext_name = os.path.splitext(filename)[1].strip('.').lower()
+        
+        # 启动后台任务处理ASR
+        if background_tasks:
+            background_tasks.add_task(process_asr_task, task_id, temp_input_file_path, ext_name)
+        else:
+            # 如果没有background_tasks，直接运行（用于测试）
+            asyncio.create_task(process_asr_task(task_id, temp_input_file_path, ext_name))
+        
+        return {"task_id": task_id, "status": task.status}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @app.post("/asr")
