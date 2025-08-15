@@ -61,13 +61,39 @@ docker-compose down
 #### Docker镜像构建说明
 
 Dockerfile使用Python 3.10 slim镜像作为基础，执行以下步骤：
-1. 设置工作目录为`/app`
-2. 复制并安装requirements.txt中的依赖项
-3. 复制项目文件到容器中
-4. 暴露端口12369（FastAPI）和7860（Gradio）
-5. 启动FastAPI应用
+1. 安装系统级依赖（如ffmpeg）
+2. 设置工作目录为`/app`
+3. 复制并安装requirements.txt中的依赖项
+4. 复制项目文件到容器中
+5. 暴露端口12369（FastAPI）和7860（Gradio）
+6. 启动FastAPI应用
+
+注意：镜像构建过程中会安装所有Python依赖项，但在首次运行时，funasr库会自动下载所需的模型文件（如paraformer-zh、fsmn-vad等）。这些模型文件较大（通常几百MB到几GB），因此在首次启动容器时可能需要一些时间来下载。建议确保有稳定的网络连接。
 
 注意：如果在Apple Silicon Mac上构建镜像，可能需要针对ARM64架构进行特殊处理。
+
+#### 容器启动问题排查
+
+如果容器在启动后立即退出，可能是因为：
+
+1. 模型文件下载完成后应用启动时出现错误
+2. 系统依赖缺失（现已在Dockerfile中添加ffmpeg安装步骤）
+3. 端口冲突
+
+解决方案：
+1. 重新构建镜像以确保包含最新的Dockerfile更改：
+   ```
+   docker build -t my_fun_asr .
+   ```
+
+2. 使用以下命令查看容器日志，以获取更多错误信息：
+   ```
+   docker run -it -p 12369:12369 -p 7860:7860 my_fun_asr
+   # 如果容器退出，使用以下命令查看日志：
+   docker logs <container_id>
+   ```
+
+3. 确保主机端口12369和7860未被占用
 
 ## 相关接口
 
