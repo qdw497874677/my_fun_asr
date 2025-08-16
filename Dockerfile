@@ -22,5 +22,5 @@ COPY . .
 EXPOSE 12369
 EXPOSE 7860
 
-# 启动 FastAPI 应用程序
-CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "12369"]
+# 启动 FastAPI 和 Gradio 应用程序
+CMD ["sh", "-c", "uvicorn main:app --host 0.0.0.0 --port 12369 & python gradio_app.py"]
