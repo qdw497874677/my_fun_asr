@@ -18,11 +18,44 @@ pip install -i https://mirror.baidu.com/pypi/simple -r requirements.txt
 python main.py
 ```
 
-### 方式二：docker-compose一键安装
+### 方式二：Docker部署
 
-```
+本项目提供两种Docker部署方式：
+
+#### 1. 使用预构建的镜像 (推荐)
+
+这种方式会直接从Docker Hub拉取已经构建好的镜像，简单快捷。
+
+```bash
 docker-compose up -d
 ```
+此命令会使用 `docker-compose.yml` 文件。
+
+#### 2. 本地构建镜像
+
+如果您修改了代码 (`main.py`)、依赖 (`requirements.txt`) 或 `Dockerfile`，需要重新在本地构建镜像。这里提供两种方式：
+
+**方法A：使用 `docker` 命令手动构建和运行 (适合初学者)**
+
+1.  **构建镜像**: 在项目根目录运行以下命令，构建一个名为 `my_fun_asr` 的镜像。
+    ```bash
+    docker build -t my_fun_asr:latest .
+    ```
+
+2.  **运行容器**: 使用刚刚构建的镜像来启动一个容器。
+    ```bash
+    docker run -d -p 12369:12369 --name my_fun_asr_container my_fun_asr:latest
+    ```
+    - `-d`: 后台运行
+    - `-p 12369:12369`: 将主机的12369端口映射到容器的12369端口
+    - `--name my_fun_asr_container`: 给容器起一个名字，方便管理
+
+**方法B：使用 `docker-compose` 构建和运行**
+
+```bash
+docker-compose -f docker-compose.build.yml up -d --build
+```
+此命令会使用 `docker-compose.build.yml` 文件来构建并启动服务。`-f` 参数用于指定配置文件，`--build` 标志会强制重新构建镜像。
 
 ## 相关接口
 
