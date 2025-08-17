@@ -13,8 +13,8 @@ RUN pip install --no-cache-dir -r requirements.txt
 # 复制当前目录中的文件到工作目录中
 COPY . .
 
-# 下载模型
-RUN python -c "from funasr import AutoModel; AutoModel(model='paraformer-zh',vad_model='fsmn-vad',punc_model='ct-punc')"
+# 下载模型 (注：模型将在容器首次启动时自动下载，此步骤已移至运行时)
+# RUN python -c "from funasr import AutoModel; AutoModel(model='paraformer-zh',vad_model='fsmn-vad',punc_model='ct-punc')"
 
 # 暴露端口
 EXPOSE 12369

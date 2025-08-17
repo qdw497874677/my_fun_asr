@@ -44,11 +44,14 @@ docker-compose up -d
 
 2.  **运行容器**: 使用刚刚构建的镜像来启动一个容器。
     ```bash
-    docker run -d -p 12369:12369 --name my_fun_asr_container my_fun_asr:latest
+    docker run -d -p 12369:12369 -v my_fun_asr_cache:/root/.cache/modelscope --name my_fun_asr_container my_fun_asr:latest
     ```
     - `-d`: 后台运行
     - `-p 12369:12369`: 将主机的12369端口映射到容器的12369端口
+    - `-v my_fun_asr_cache:/root/.cache/modelscope`: 创建一个名为 `my_fun_asr_cache` 的数据卷来持久化模型文件，避免重复下载。
     - `--name my_fun_asr_container`: 给容器起一个名字，方便管理
+    
+    **注意**: 容器首次启动时，会自动下载所需的模型文件，这可能需要几分钟时间，请耐心等待。后续启动将直接使用缓存，速度会很快。
 
 **方法B：使用 `docker-compose` 构建和运行**
 
