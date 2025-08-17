@@ -1,13 +1,115 @@
 import os
 import re
 import tempfile
-from typing import List
+import uuid
+import requests
+from typing import List, Optional
+from datetime import datetime
+from urllib.parse import urlparse
+from enum import Enum
 
 import torch
-from fastapi import FastAPI, File, UploadFile, HTTPException
+from fastapi import FastAPI, File, UploadFile, HTTPException, BackgroundTasks
 from funasr import AutoModel
+from pydantic import BaseModel
+import asyncio
 
 app = FastAPI()
+
+# 任务状态枚举
+class TaskStatus(str, Enum):
+    PENDING = "pending"
+    PROCESSING = "processing"
+    COMPLETED = "completed"
+    FAILED = "failed"
+
+# 任务模型
+class Task(BaseModel):
+    id: str
+    status: TaskStatus
+    created_at: datetime
+    completed_at: Optional[datetime] = None
+    result: Optional[dict] = None
+    error: Optional[str] = None
+
+# 任务创建请求模型
+class TaskCreateRequest(BaseModel):
+    file_url: Optional[str] = None
+
+# 任务存储（内存存储）
+tasks_storage = {}
+
+
+# 从URL下载文件
+def download_file_from_url(url: str) -> str:
+    response = requests.get(url)
+    response.raise_for_status()
+    
+    # 获取文件名
+    parsed_url = urlparse(url)
+    file_name = os.path.basename(parsed_url.path)
+    if not file_name:
+        file_name = f"downloaded_file_{uuid.uuid4().hex[:8]}"
+    
+    # 保存文件到临时目录
+    suffix = os.path.splitext(file_name)[1]
+    with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as temp_file:
+        temp_file.write(response.content)
+        return temp_file.name
+
+
+# 运行模型推理的同步函数
+def run_model_generate(input_path):
+    return model.generate(
+        input=input_path,
+        batch_size_s=300,
+        batch_size_threshold_s=60,
+    )
+
+# 异步任务处理函数
+async def process_asr_task(task_id: str, file_path: str, is_temp_file: bool = False):
+    # 更新任务状态为处理中
+    tasks_storage[task_id].status = TaskStatus.PROCESSING
+    
+    temp_input_file_path = None
+    loop = asyncio.get_event_loop()
+    try:
+        # 如果不是wav或mp3格式，需要转换
+        ext_name = os.path.splitext(file_path)[1].strip('.')
+        temp_input_file_path = file_path
+        if ext_name not in ['wav', 'mp3']:
+            # 如果不是音频文件,用ffmpeg转换为音频文件
+            temp_input_file_path = await loop.run_in_executor(
+                None, convert_audio, temp_input_file_path
+            )
+        
+        # 在线程池中执行语音识别
+        result = await loop.run_in_executor(
+            None, run_model_generate, temp_input_file_path
+        )
+        
+        # 生成SRT字幕
+        try:
+            srt = funasr_to_srt(result)
+            result[0]['srt'] = srt
+        except Exception as e:
+            print(f'srt convert fail: {e}')
+        
+        # 更新任务状态为完成
+        tasks_storage[task_id].status = TaskStatus.COMPLETED
+        tasks_storage[task_id].completed_at = datetime.now()
+        tasks_storage[task_id].result = {"result": result}
+    except Exception as e:
+        # 更新任务状态为失败
+        tasks_storage[task_id].status = TaskStatus.FAILED
+        tasks_storage[task_id].completed_at = datetime.now()
+        tasks_storage[task_id].error = str(e)
+    finally:
+        # 清理临时文件
+        for temp_file in [temp_input_file_path]:
+            if temp_file and is_temp_file and os.path.exists(temp_file):
+                os.remove(temp_file)
+
 
 device = "cuda" if torch.cuda.is_available() else "cpu"
 
@@ -185,6 +287,88 @@ async def asr(file: List[UploadFile] = File(...)):
         for temp_file in [temp_input_file_path]:
             if temp_file and os.path.exists(temp_file):  # 检查路径是否存在
                 os.remove(temp_file)  # 删除文件
+
+
+# 创建转换任务接口
+@app.post("/tasks")
+async def create_task(
+    background_tasks: BackgroundTasks,
+    file: Optional[UploadFile] = File(None),
+    file_url: Optional[str] = None
+):
+    # 检查参数
+    if not file and not file_url:
+        raise HTTPException(status_code=400, detail="Either file or file_url must be provided")
+    
+    if file and file_url:
+        raise HTTPException(status_code=400, detail="Only one of file or file_url can be provided")
+    
+    # 创建任务
+    task_id = str(uuid.uuid4())
+    task = Task(
+        id=task_id,
+        status=TaskStatus.PENDING,
+        created_at=datetime.now()
+    )
+    tasks_storage[task_id] = task
+    
+    # 处理文件
+    file_path = None
+    is_temp_file = False
+    
+    try:
+        if file:
+            # 保存上传的文件
+            file_path = await save_upload_file(file)
+            is_temp_file = True
+        elif file_url:
+            # 从URL下载文件
+            file_path = download_file_from_url(file_url)
+            is_temp_file = True
+        
+        # 后台处理任务
+        background_tasks.add_task(process_asr_task, task_id, file_path, is_temp_file)
+        
+        return {"task_id": task_id, "status": task.status}
+    except Exception as e:
+        # 如果创建任务失败，更新任务状态
+        task.status = TaskStatus.FAILED
+        task.completed_at = datetime.now()
+        task.error = str(e)
+        tasks_storage[task_id] = task
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# 查看任务执行状态接口
+@app.get("/tasks/{task_id}")
+async def get_task_status(task_id: str):
+    if task_id not in tasks_storage:
+        raise HTTPException(status_code=404, detail="Task not found")
+    
+    task = tasks_storage[task_id]
+    return {
+        "task_id": task.id,
+        "status": task.status,
+        "created_at": task.created_at,
+        "completed_at": task.completed_at
+    }
+
+
+# 获取任务执行结果接口
+@app.get("/tasks/{task_id}/result")
+async def get_task_result(task_id: str):
+    if task_id not in tasks_storage:
+        raise HTTPException(status_code=404, detail="Task not found")
+    
+    task = tasks_storage[task_id]
+    
+    if task.status == TaskStatus.PENDING or task.status == TaskStatus.PROCESSING:
+        raise HTTPException(status_code=400, detail=f"Task is not completed yet. Current status: {task.status}")
+    
+    if task.status == TaskStatus.FAILED:
+        raise HTTPException(status_code=500, detail=f"Task failed with error: {task.error}")
+    
+    return task.result
 
 
 if __name__ == "__main__":
