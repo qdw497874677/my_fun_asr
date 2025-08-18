@@ -9,7 +9,8 @@ from urllib.parse import urlparse
 from enum import Enum
 
 import torch
-from fastapi import FastAPI, File, UploadFile, HTTPException, BackgroundTasks
+from fastapi import FastAPI, File, UploadFile, BackgroundTasks
+from fastapi.responses import JSONResponse
 from funasr import AutoModel
 from pydantic import BaseModel
 import asyncio
@@ -249,31 +250,32 @@ def format_timestamp(milliseconds):
     return f"{hours:02}:{minutes:02}:{seconds:02},{milliseconds:03}"
 
 
+def create_response(code: int, message: str, data: Optional[dict] = None):
+    return JSONResponse(
+        status_code=200,
+        content={"code": code, "message": message, "data": data or {}},
+    )
+
 @app.post("/asr")
 async def asr(file: List[UploadFile] = File(...)):
     temp_input_file_path = None
     try:
         if not file or any(f.filename == "" for f in file):
-            raise Exception("No file was uploaded")
+            return create_response(400, "No file was uploaded")
         if len(file) != 1:
-            raise Exception("Only one file can be uploaded at a time")
+            return create_response(400, "Only one file can be uploaded at a time")
         file = file[0]
 
         ext_name = os.path.splitext(file.filename)[1].strip('.')
 
-        temp_input_file_path = await save_upload_file(file)  # 保存上传的文件
+        temp_input_file_path = await save_upload_file(file)
         if ext_name not in ['wav', 'mp3']:
-            # 如果不是音频文件,用ffmpeg转换为音频文件
             temp_input_file_path = convert_audio(temp_input_file_path)
-            # raise Exception("Unsupported file extension")
-
-        print(temp_input_file_path)
 
         result = model.generate(
             input=temp_input_file_path,
             batch_size_s=300,
             batch_size_threshold_s=60,
-            # hotword='魔搭'
         )
 
         try:
@@ -282,14 +284,12 @@ async def asr(file: List[UploadFile] = File(...)):
         except:
             print('srt convert fail')
 
-        return {"result": result}  # 返回识别结果
-    except Exception as e:  # 捕获其他异常
-        raise HTTPException(status_code=500, detail=str(e))
+        return create_response(200, "Success", {"result": result})
+    except Exception as e:
+        return create_response(500, str(e))
     finally:
-        # 清理临时文件
-        for temp_file in [temp_input_file_path]:
-            if temp_file and os.path.exists(temp_file):  # 检查路径是否存在
-                os.remove(temp_file)  # 删除文件
+        if temp_input_file_path and os.path.exists(temp_input_file_path):
+            os.remove(temp_input_file_path)
 
 
 # 创建转换任务接口
@@ -301,10 +301,10 @@ async def create_task(
 ):
     # 检查参数
     if not file and not file_url:
-        raise HTTPException(status_code=400, detail="Either file or file_url must be provided")
+        return create_response(400, "Either file or file_url must be provided")
     
     if file and file_url:
-        raise HTTPException(status_code=400, detail="Only one of file or file_url can be provided")
+        return create_response(400, "Only one of file or file_url can be provided")
     
     # 创建任务
     task_id = str(uuid.uuid4())
@@ -332,52 +332,47 @@ async def create_task(
         # 后台处理任务
         background_tasks.add_task(process_asr_task, task_id, file_path, is_temp_file)
         
-        return {"task_id": task_id, "status": task.status}
+        return create_response(200, "Task created successfully", {"task_id": task_id, "status": task.status})
     except Exception as e:
         # 如果创建任务失败，更新任务状态
         task.status = TaskStatus.FAILED
         task.completed_at = datetime.now(beijing_tz)
         task.error = str(e)
         tasks_storage[task_id] = task
-        raise HTTPException(status_code=500, detail=str(e))
+        return create_response(500, str(e))
 
 
 # 查看所有任务列表接口
 @app.get("/tasks")
 async def list_tasks():
-    return list(tasks_storage.values())
+    tasks_list = [task.dict() for task in tasks_storage.values()]
+    return create_response(200, "Success", {"tasks": tasks_list})
 
 
 # 查看任务执行状态接口
 @app.get("/tasks/{task_id}")
 async def get_task_status(task_id: str):
-    if task_id not in tasks_storage:
-        raise HTTPException(status_code=404, detail="Task not found")
+    task = tasks_storage.get(task_id)
+    if not task:
+        return create_response(404, "Task not found")
     
-    task = tasks_storage[task_id]
-    return {
-        "task_id": task.id,
-        "status": task.status,
-        "created_at": task.created_at,
-        "completed_at": task.completed_at
-    }
+    return create_response(200, "Success", task.dict())
 
 
 # 获取任务执行结果接口
 @app.get("/tasks/{task_id}/result")
 async def get_task_result(task_id: str):
-    if task_id not in tasks_storage:
-        raise HTTPException(status_code=404, detail="Task not found")
-    
-    task = tasks_storage[task_id]
+    task = tasks_storage.get(task_id)
+    if not task:
+        return create_response(404, "Task not found")
     
     if task.status == TaskStatus.PENDING or task.status == TaskStatus.PROCESSING:
-        raise HTTPException(status_code=400, detail=f"Task is not completed yet. Current status: {task.status}")
+        return create_response(400, f"Task is not completed yet. Current status: {task.status}")
     
     if task.status == TaskStatus.FAILED:
-        raise HTTPException(status_code=500, detail=f"Task failed with error: {task.error}")
+        return create_response(500, f"Task failed with error: {task.error}")
     
-    return task.result
+    return create_response(200, "Success", task.result)
 
 
 if __name__ == "__main__":

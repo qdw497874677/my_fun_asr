@@ -59,20 +59,36 @@ docker-compose -f docker-compose.build.yml up -d --build
 
 ## 相关接口
 
+### 统一响应格式
+
+所有接口都遵循统一的JSON响应格式，HTTP状态码始终为 `200`。通过业务状态码 `code` 来判断请求结果。
+
+```json
+{
+  "code": 200, // 业务状态码: 200-成功, 4xx-客户端错误, 5xx-服务端错误
+  "message": "Success", // 描述信息
+  "data": {} // 响应数据
+}
+```
+
 ### 同步转换接口
 
 - **URL**: `/asr`
 - **Method**: `POST`
 - **Description**: 直接上传文件进行语音识别，同步返回结果。适用于处理时间较短的音频。
 - **Request**: `multipart/form-data`，包含一个名为 `file` 的文件字段。
-- **Example**:
-  ```bash
-  curl -X POST "http://127.0.0.1:12369/asr" -F "file=@/path/to/your/audio.mp3"
+- **Success Response (`code: 200`)**:
+  ```json
+  {
+    "code": 200,
+    "message": "Success",
+    "data": {
+      "result": [
+        // ...识别结果...
+      ]
+    }
+  }
   ```
-- 支持mp3、wav音频文件转文字
-![](example.jpg)
-- 支持mp4等视频文件转文字
-![](example2.jpg)
 
 ### 异步转换接口
 
@@ -83,23 +99,16 @@ docker-compose -f docker-compose.build.yml up -d --build
 - **URL**: `/tasks`
 - **Method**: `POST`
 - **Description**: 创建一个异步语音识别任务。你可以上传本地文件，或者提供一个文件的URL。
-- **Request Body**:
-  - `multipart/form-data` with a `file` field (for file uploads).
-  - OR `form-data` with a `file_url` field (for URL-based files).
-- **Success Response**:
+- **Success Response (`code: 200`)**:
   ```json
   {
-    "task_id": "your-unique-task-id",
-    "status": "pending"
+    "code": 200,
+    "message": "Task created successfully",
+    "data": {
+      "task_id": "your-unique-task-id",
+      "status": "pending"
+    }
   }
-  ```
-- **Example (File Upload)**:
-  ```bash
-  curl -X POST "http://127.0.0.1:12369/tasks" -F "file=@/path/to/your/audio.mp3"
-  ```
-- **Example (File URL)**:
-  ```bash
-  curl -X POST "http://127.0.0.1:12369/tasks" -F "file_url=http://example.com/audio.mp3"
   ```
 
 #### 2. 查看所有任务
@@ -107,10 +116,17 @@ docker-compose -f docker-compose.build.yml up -d --build
 - **URL**: `/tasks`
 - **Method**: `GET`
 - **Description**: 获取所有任务的列表及其当前状态。
-- **Success Response**: 返回一个包含所有任务对象的数组。
-- **Example**:
-  ```bash
-  curl http://127.0.0.1:12369/tasks
+- **Success Response (`code: 200`)**:
+  ```json
+  {
+    "code": 200,
+    "message": "Success",
+    "data": {
+      "tasks": [
+        // ...任务对象列表...
+      ]
+    }
+  }
   ```
 
 #### 3. 查看单个任务状态
@@ -118,20 +134,25 @@ docker-compose -f docker-compose.build.yml up -d --build
 - **URL**: `/tasks/{task_id}`
 - **Method**: `GET`
 - **Description**: 根据任务ID查询任务的当前状态。
-- **URL Params**:
-  - `task_id` (string, required): The ID of the task.
-- **Success Response**:
+- **Success Response (`code: 200`)**:
   ```json
   {
-    "task_id": "your-unique-task-id",
-    "status": "processing", // or "pending", "completed", "failed"
-    "created_at": "2023-10-28T12:00:00.000Z",
-    "completed_at": null // or timestamp when completed/failed
+    "code": 200,
+    "message": "Success",
+    "data": {
+      "id": "your-unique-task-id",
+      "status": "processing",
+      // ...其他任务字段...
+    }
   }
   ```
-- **Example**:
-  ```bash
-  curl http://127.0.0.1:12369/tasks/your-unique-task-id
+- **Error Response (`code: 404`)**:
+  ```json
+  {
+    "code": 404,
+    "message": "Task not found",
+    "data": {}
+  }
   ```
 
 #### 4. 获取任务结果
@@ -139,13 +160,19 @@ docker-compose -f docker-compose.build.yml up -d --build
 - **URL**: `/tasks/{task_id}/result`
 - **Method**: `GET`
 - **Description**: 如果任务已完成，获取语音识别的结果。
-- **URL Params**:
-  - `task_id` (string, required): The ID of the task.
-- **Success Response**: 返回与同步接口 `/asr` 相同的识别结果JSON。
-- **Error Response**:
-  - 如果任务尚未完成，返回 `400 Bad Request`。
-  - 如果任务失败，返回 `500 Internal Server Error` 并附带错误信息。
-- **Example**:
-  ```bash
-  curl http://127.0.0.1:12369/tasks/your-unique-task-id/result
+- **Success Response (`code: 200`)**:
+  ```json
+  {
+    "code": 200,
+    "message": "Success",
+    "data": {
+      "result": [
+        // ...识别结果...
+      ]
+    }
+  }
   ```
+- **Error Responses**:
+  - **任务不存在 (`code: 404`)**
+  - **任务未完成 (`code: 400`)**
+  - **任务失败 (`code: 500`)**
