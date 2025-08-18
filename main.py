@@ -4,7 +4,7 @@ import tempfile
 import uuid
 import requests
 from typing import List, Optional
-from datetime import datetime
+from datetime import datetime, timezone, timedelta
 from urllib.parse import urlparse
 from enum import Enum
 
@@ -15,6 +15,9 @@ from pydantic import BaseModel
 import asyncio
 
 app = FastAPI()
+
+# 定义北京时区
+beijing_tz = timezone(timedelta(hours=8))
 
 # 任务状态枚举
 class TaskStatus(str, Enum):
@@ -97,12 +100,12 @@ async def process_asr_task(task_id: str, file_path: str, is_temp_file: bool = Fa
         
         # 更新任务状态为完成
         tasks_storage[task_id].status = TaskStatus.COMPLETED
-        tasks_storage[task_id].completed_at = datetime.now()
+        tasks_storage[task_id].completed_at = datetime.now(beijing_tz)
         tasks_storage[task_id].result = {"result": result}
     except Exception as e:
         # 更新任务状态为失败
         tasks_storage[task_id].status = TaskStatus.FAILED
-        tasks_storage[task_id].completed_at = datetime.now()
+        tasks_storage[task_id].completed_at = datetime.now(beijing_tz)
         tasks_storage[task_id].error = str(e)
     finally:
         # 清理临时文件
@@ -308,7 +311,7 @@ async def create_task(
     task = Task(
         id=task_id,
         status=TaskStatus.PENDING,
-        created_at=datetime.now()
+        created_at=datetime.now(beijing_tz)
     )
     tasks_storage[task_id] = task
     
@@ -333,7 +336,7 @@ async def create_task(
     except Exception as e:
         # 如果创建任务失败，更新任务状态
         task.status = TaskStatus.FAILED
-        task.completed_at = datetime.now()
+        task.completed_at = datetime.now(beijing_tz)
         task.error = str(e)
         tasks_storage[task_id] = task
         raise HTTPException(status_code=500, detail=str(e))
