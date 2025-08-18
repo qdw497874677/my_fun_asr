@@ -102,7 +102,18 @@ docker-compose -f docker-compose.build.yml up -d --build
   curl -X POST "http://127.0.0.1:12369/tasks" -F "file_url=http://example.com/audio.mp3"
   ```
 
-#### 2. 查看任务状态
+#### 2. 查看所有任务
+
+- **URL**: `/tasks`
+- **Method**: `GET`
+- **Description**: 获取所有任务的列表及其当前状态。
+- **Success Response**: 返回一个包含所有任务对象的数组。
+- **Example**:
+  ```bash
+  curl http://127.0.0.1:12369/tasks
+  ```
+
+#### 3. 查看单个任务状态
 
 - **URL**: `/tasks/{task_id}`
 - **Method**: `GET`
@@ -123,7 +134,7 @@ docker-compose -f docker-compose.build.yml up -d --build
   curl http://127.0.0.1:12369/tasks/your-unique-task-id
   ```
 
-#### 3. 获取任务结果
+#### 4. 获取任务结果
 
 - **URL**: `/tasks/{task_id}/result`
 - **Method**: `GET`

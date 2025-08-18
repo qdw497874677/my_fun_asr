@@ -342,6 +342,12 @@ async def create_task(
         raise HTTPException(status_code=500, detail=str(e))
 
 
+# 查看所有任务列表接口
+@app.get("/tasks")
+async def list_tasks():
+    return list(tasks_storage.values())
+
+
 # 查看任务执行状态接口
 @app.get("/tasks/{task_id}")
 async def get_task_status(task_id: str):
