@@ -1,3 +1,4 @@
+import logging
 import os
 import re
 import tempfile
@@ -14,6 +15,10 @@ from fastapi.responses import JSONResponse
 from funasr import AutoModel
 from pydantic import BaseModel
 import asyncio
+
+# Configure logging
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+logger = logging.getLogger(__name__)
 
 app = FastAPI()
 
@@ -104,10 +109,12 @@ async def process_asr_task(task_id: str, file_path: str, is_temp_file: bool = Fa
         tasks_storage[task_id].completed_at = datetime.now(beijing_tz)
         tasks_storage[task_id].result = {"result": result}
     except Exception as e:
+        error_message = f"Error processing task {task_id}: {e}"
+        logger.error(error_message, exc_info=True)
         # 更新任务状态为失败
         tasks_storage[task_id].status = TaskStatus.FAILED
         tasks_storage[task_id].completed_at = datetime.now(beijing_tz)
-        tasks_storage[task_id].error = str(e)
+        tasks_storage[task_id].error = error_message
     finally:
         # 清理临时文件
         for temp_file in [temp_input_file_path]:
@@ -250,9 +257,9 @@ def format_timestamp(milliseconds):
     return f"{hours:02}:{minutes:02}:{seconds:02},{milliseconds:03}"
 
 
-def create_response(code: int, message: str, data: Optional[dict] = None):
+def create_response(code: int, message: str, data: Optional[dict] = None, status_code: int = 200):
     return JSONResponse(
-        status_code=200,
+        status_code=status_code,
         content={"code": code, "message": message, "data": data or {}},
     )
 
@@ -261,9 +268,9 @@ async def asr(file: List[UploadFile] = File(...)):
     temp_input_file_path = None
     try:
         if not file or any(f.filename == "" for f in file):
-            return create_response(400, "No file was uploaded")
+            return create_response(400, "No file was uploaded", status_code=400)
         if len(file) != 1:
-            return create_response(400, "Only one file can be uploaded at a time")
+            return create_response(400, "Only one file can be uploaded at a time", status_code=400)
         file = file[0]
 
         ext_name = os.path.splitext(file.filename)[1].strip('.')
@@ -286,7 +293,8 @@ async def asr(file: List[UploadFile] = File(...)):
 
         return create_response(200, "Success", {"result": result})
     except Exception as e:
-        return create_response(500, str(e))
+        logger.error(f"Error in /asr endpoint: {e}", exc_info=True)
+        return create_response(500, "An internal server error occurred during ASR processing.", {"error": str(e)}, status_code=500)
     finally:
         if temp_input_file_path and os.path.exists(temp_input_file_path):
             os.remove(temp_input_file_path)
@@ -301,10 +309,10 @@ async def create_task(
 ):
     # 检查参数
     if not file and not file_url:
-        return create_response(400, "Either file or file_url must be provided")
+        return create_response(400, "Either file or file_url must be provided", status_code=400)
     
     if file and file_url:
-        return create_response(400, "Only one of file or file_url can be provided")
+        return create_response(400, "Only one of file or file_url can be provided", status_code=400)
     
     # 创建任务
     task_id = str(uuid.uuid4())
@@ -326,20 +334,32 @@ async def create_task(
             is_temp_file = True
         elif file_url:
             # 从URL下载文件
-            file_path = download_file_from_url(file_url)
-            is_temp_file = True
-        
+            try:
+                loop = asyncio.get_event_loop()
+                file_path = await loop.run_in_executor(None, download_file_from_url, file_url)
+                is_temp_file = True
+            except requests.exceptions.RequestException as e:
+                error_message = f"Failed to download file from URL: {file_url}. Error: {e}"
+                logger.error(error_message, exc_info=True)
+                task.status = TaskStatus.FAILED
+                task.completed_at = datetime.now(beijing_tz)
+                task.error = error_message
+                tasks_storage[task_id] = task
+                return create_response(400, "Invalid file_url, download failed.", {"error": str(e)}, status_code=400)
+
         # 后台处理任务
         background_tasks.add_task(process_asr_task, task_id, file_path, is_temp_file)
         
         return create_response(200, "Task created successfully", {"task_id": task_id, "status": task.status})
     except Exception as e:
         # 如果创建任务失败，更新任务状态
+        error_message = f"An unexpected error occurred while creating task {task_id}: {e}"
+        logger.error(error_message, exc_info=True)
         task.status = TaskStatus.FAILED
         task.completed_at = datetime.now(beijing_tz)
-        task.error = str(e)
+        task.error = error_message
         tasks_storage[task_id] = task
-        return create_response(500, str(e))
+        return create_response(500, "An internal server error occurred.", {"error": str(e)}, status_code=500)
 
 
 # 查看所有任务列表接口
@@ -354,7 +374,7 @@ async def list_tasks():
 async def get_task_status(task_id: str):
     task = tasks_storage.get(task_id)
     if not task:
-        return create_response(404, "Task not found")
+        return create_response(404, "Task not found", status_code=404)
     
     return create_response(200, "Success", task.dict())
 
@@ -364,13 +384,13 @@ async def get_task_status(task_id: str):
 async def get_task_result(task_id: str):
     task = tasks_storage.get(task_id)
     if not task:
-        return create_response(404, "Task not found")
+        return create_response(404, "Task not found", status_code=404)
     
     if task.status == TaskStatus.PENDING or task.status == TaskStatus.PROCESSING:
-        return create_response(400, f"Task is not completed yet. Current status: {task.status}")
+        return create_response(202, f"Task is not completed yet. Current status: {task.status}", status_code=202)
     
     if task.status == TaskStatus.FAILED:
-        return create_response(500, f"Task failed with error: {task.error}")
+        return create_response(500, "Task failed", {"error": task.error}, status_code=500)
     
     return create_response(200, "Success", task.result)
 

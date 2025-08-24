@@ -1,0 +1,30 @@
+WARNING:root:Key Conformer already exists in model_classes, re-register
+WARNING:root:Key Linear already exists in adaptor_classes, re-register
+WARNING:root:Key TransformerDecoder already exists in decoder_classes, re-register
+WARNING:root:Key LightweightConvolutionTransformerDecoder already exists in decoder_classes, re-register
+WARNING:root:Key LightweightConvolution2DTransformerDecoder already exists in decoder_classes, re-register
+WARNING:root:Key DynamicConvolutionTransformerDecoder already exists in decoder_classes, re-register
+WARNING:root:Key DynamicConvolution2DTransformerDecoder already exists in decoder_classes, re-register
+2025-08-18 23:56:49,956 - modelscope - WARNING - Using branch: master as version is unstable, use with caution
+2025-08-18 23:56:58,468 - modelscope - WARNING - Using branch: master as version is unstable, use with caution
+2025-08-18 23:57:01,794 - modelscope - WARNING - Using branch: master as version is unstable, use with caution
+Building prefix dict from the default dictionary ...
+DEBUG:jieba:Building prefix dict from the default dictionary ...
+Loading model from cache /var/folders/yx/28h784pd3656j5mjb_wqqnqh0000gn/T/jieba.cache
+DEBUG:jieba:Loading model from cache /var/folders/yx/28h784pd3656j5mjb_wqqnqh0000gn/T/jieba.cache
+Loading model cost 0.471 seconds.
+DEBUG:jieba:Loading model cost 0.471 seconds.
+Prefix dict has been built successfully.
+DEBUG:jieba:Prefix dict has been built successfully.
+INFO:     Started server process [1647]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+INFO:     Uvicorn running on http://0.0.0.0:12369 (Press CTRL+C to quit)
+funasr version: 1.1.18.
+Check update of funasr, and it would cost few times. You may disable it by set `disable_update=True` in AutoModel
+New version is available: 1.2.7.
+Please use the command "pip install -U funasr" to upgrade.
+INFO:     127.0.0.1:58250 - "POST /tasks HTTP/1.1" 400 Bad Request
+INFO:     127.0.0.1:58258 - "POST /tasks HTTP/1.1" 400 Bad Request
+INFO:     127.0.0.1:58261 - "POST /tasks HTTP/1.1" 400 Bad Request
+INFO:     127.0.0.1:58273 - "POST /tasks?file_url=https://www2.cs.uic.edu/~i101/SoundFiles/BabyElephantWalk60.wav HTTP/1.1" 500 Internal Server Error
