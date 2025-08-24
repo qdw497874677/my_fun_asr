@@ -395,6 +395,12 @@ async def get_task_result(task_id: str):
     return create_response(200, "Success", task.result)
 
 
+from gradio_app import create_gradio_app
+import gradio as gr
+
+# Mount Gradio app
+app = gr.mount_gradio_app(app, create_gradio_app(), path="/gradio")
+
 if __name__ == "__main__":
     import uvicorn
 
