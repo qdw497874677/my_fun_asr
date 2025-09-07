@@ -411,6 +411,36 @@ async def get_task_result(task_id: str):
     return create_response(200, "Success", task.result)
 
 
+# 获取任务执行结果的SRT格式接口
+@app.get("/tasks/{task_id}/srt")
+async def get_task_result_srt(task_id: str):
+    task = tasks_storage.get(task_id)
+    if not task:
+        return create_response(404, "Task not found", status_code=404)
+    
+    if task.status == TaskStatus.PENDING or task.status == TaskStatus.PROCESSING:
+        return create_response(202, f"Task is not completed yet. Current status: {task.status}", status_code=202)
+    
+    if task.status == TaskStatus.FAILED:
+        return create_response(500, "Task failed", {"error": task.error}, status_code=500)
+    
+    # 检查结果中是否有SRT内容
+    if not task.result or "result" not in task.result or not task.result["result"]:
+        return create_response(500, "Task result is invalid", status_code=500)
+    
+    result_data = task.result["result"][0]
+    if "srt" not in result_data:
+        return create_response(500, "SRT content not found in task result", status_code=500)
+    
+    # 返回SRT内容
+    from fastapi.responses import Response
+    return Response(
+        content=result_data["srt"],
+        media_type="text/plain",
+        headers={"Content-Disposition": f"attachment; filename={task_id}.srt"}
+    )
+
+
 from gradio_app import create_gradio_app
 import gradio as gr
 
