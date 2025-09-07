@@ -176,3 +176,16 @@ docker-compose -f docker-compose.build.yml up -d --build
   - **任务不存在 (`code: 404`)**
   - **任务未完成 (`code: 400`)**
   - **任务失败 (`code: 500`)**
+
+#### 5. 获取SRT字幕文件
+
+- **URL**: `/tasks/{task_id}/srt`
+- **Method**: `GET`
+- **Description**: 如果任务已完成，获取语音识别结果的SRT字幕文件格式。
+- **Success Response (`code: 200`)**:
+  - 直接返回SRT格式的字幕文件，浏览器会提示下载文件名为`{task_id}.srt`。
+- **Error Responses**:
+  - **任务不存在 (`code: 404`)**
+  - **任务未完成 (`code: 400`)**
+  - **任务失败 (`code: 500`)**
+  - **SRT内容不存在 (`code: 500`)**
