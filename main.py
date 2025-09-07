@@ -365,7 +365,16 @@ async def create_task(
 # 查看所有任务列表接口
 @app.get("/tasks")
 async def list_tasks():
-    tasks_list = [task.dict() for task in tasks_storage.values()]
+    tasks_list = []
+    for task in tasks_storage.values():
+        task_dict = task.dict()
+        # 将datetime对象转换为字符串以便JSON序列化
+        if task_dict.get('created_at'):
+            task_dict['created_at'] = task_dict['created_at'].isoformat()
+        if task_dict.get('completed_at'):
+            task_dict['completed_at'] = task_dict['completed_at'].isoformat()
+        tasks_list.append(task_dict)
+    
     return create_response(200, "Success", {"tasks": tasks_list})
 
 
@@ -376,7 +385,14 @@ async def get_task_status(task_id: str):
     if not task:
         return create_response(404, "Task not found", status_code=404)
     
-    return create_response(200, "Success", task.dict())
+    # 将datetime对象转换为字符串以便JSON序列化
+    task_dict = task.dict()
+    if task_dict.get('created_at'):
+        task_dict['created_at'] = task_dict['created_at'].isoformat()
+    if task_dict.get('completed_at'):
+        task_dict['completed_at'] = task_dict['completed_at'].isoformat()
+    
+    return create_response(200, "Success", task_dict)
 
 
 # 获取任务执行结果接口

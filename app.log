@@ -28,3 +28,7 @@ INFO:     127.0.0.1:58250 - "POST /tasks HTTP/1.1" 400 Bad Request
 INFO:     127.0.0.1:58258 - "POST /tasks HTTP/1.1" 400 Bad Request
 INFO:     127.0.0.1:58261 - "POST /tasks HTTP/1.1" 400 Bad Request
 INFO:     127.0.0.1:58273 - "POST /tasks?file_url=https://www2.cs.uic.edu/~i101/SoundFiles/BabyElephantWalk60.wav HTTP/1.1" 500 Internal Server Error
+INFO:     Shutting down
+INFO:     Waiting for application shutdown.
+INFO:     Application shutdown complete.
+INFO:     Finished server process [1647]
